@@ -1,0 +1,785 @@
+<?xml version="1.0"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║   4WD SKID-STEER SCOUTING ROVER — rover.urdf                       ║
+  ║   Based on: Panther v0.2 CAD  |  Measured via MeshLab              ║
+  ║                                                                      ║
+  ║   KEY DIMENSIONS (all from STL bounding box measurements):          ║
+  ║     Chassis (top)  : 220.4 × 120.0 × 34.0 mm                      ║
+  ║     Sub-chassis 1  : 140.0 ×  66.0 × 39.0 mm                      ║
+  ║     Sub-chassis 2  : 120.0 ×  70.0 × 40.0 mm                      ║
+  ║     Tire           : dia=126 mm, thickness=60 mm  r=0.063 m        ║
+  ║     Rim            : dia= 60 mm, thickness=50 mm  r=0.030 m        ║
+  ║                                                                      ║
+  ║   COORDINATE CONVENTION (ROS REP-103):                              ║
+  ║     X=forward  Y=left  Z=up                                         ║
+  ║     base_link origin at wheel axle height (0.063 m above ground)   ║
+  ║                                                                      ║
+  ║   STL UNITS: all meshes in mm  scale="0.001 0.001 0.001"           ║
+  ║                                                                      ║
+  ║   WHEEL POSITIONS relative to base_link:                            ║
+  ║     Front/Rear X : +/-0.080 m   (half wheelbase)                   ║
+  ║     Left/Right Y : +/-0.090 m   (chassis_half_w + wheel_half_t)    ║
+  ║     Z            :  0.000 m     (at axle height)                   ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+
+<robot name="scouting_rover">
+
+  <!-- ═══════════════════════════════════════════════════
+       MATERIALS
+  ═══════════════════════════════════════════════════ -->
+  <material name="chassis_gray">  <color rgba="0.25 0.25 0.25 1.0"/> </material>
+  <material name="wheel_black">   <color rgba="0.10 0.10 0.10 1.0"/> </material>
+  <material name="rim_silver">    <color rgba="0.70 0.70 0.75 1.0"/> </material>
+  <material name="lidar_blue">    <color rgba="0.00 0.45 0.85 1.0"/> </material>
+  <material name="camera_red">    <color rgba="0.85 0.10 0.10 1.0"/> </material>
+  <material name="imu_green">     <color rgba="0.00 0.70 0.20 1.0"/> </material>
+
+
+  <!-- ═══════════════════════════════════════════════════
+       BASE LINK
+       ─────────────────────────────────────────────────
+       Origin  : geometric center of top chassis, at axle height Z=0
+       Ground  : Z = -0.063 m below base_link
+
+       Inertia (box approx, m=5.5 kg, 0.220 x 0.120 x 0.034 m):
+         Ixx = m/12*(w^2+h^2) = 5.5/12*(0.120^2+0.034^2) = 0.007130
+         Iyy = m/12*(l^2+h^2) = 5.5/12*(0.220^2+0.034^2) = 0.022714
+         Izz = m/12*(l^2+w^2) = 5.5/12*(0.220^2+0.120^2) = 0.028783
+
+       Visual origin logic (STL min=(0,0,0), center at half-size):
+         top_chasis center (m): (0.1102, 0.0600, 0.0170)
+         visual origin xyz = negative of center = (-0.1102, -0.060, -0.017)
+  ═══════════════════════════════════════════════════ -->
+  <link name="base_link">
+
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="5.5"/>
+      <inertia ixx="0.007130" ixy="0.000000" ixz="0.000000"
+                               iyy="0.022714" iyz="0.000000"
+                                              izz="0.028783"/>
+    </inertial>
+
+    <!-- Visual 1: Top chassis plate -->
+    <visual>
+      <origin xyz="-0.1102 -0.0600 -0.0170" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/top_chasis_4WD_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="chassis_gray"/>
+    </visual>
+
+    <!-- Visual 2: Sub-chassis 1 (left lower frame)
+         NOTE: XYZ is APPROXIMATE — fine-tune after viewing in RViz
+         Logic: centered in X, below top chassis, offset to left (+Y) -->
+    <!-- Visual 3: Sub-chassis 2 (right lower frame)
+         NOTE: XYZ is APPROXIMATE — fine-tune after viewing in RViz -->
+    <visual>
+      <origin xyz="-0.0600 -0.0250 -0.0370" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/small_chasis_2_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="chassis_gray"/>
+    </visual>
+
+    <!-- Collision: single bounding box for physics stability -->
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.220 0.180 0.040"/>
+      </geometry>
+    </collision>
+
+  </link>
+
+
+  <!-- ═══════════════════════════════════════════════════
+       WHEEL LINKS + JOINTS (x4)
+       ─────────────────────────────────────────────────
+       Inertia (solid cylinder, m=0.5 kg, r=0.063 m, l=0.060 m):
+         Ixx=Iyy = m/12*(3r^2+l^2) = 0.5/12*(3x0.003969+0.0036) = 0.000646
+         Izz     = m/2 * r^2        = 0.5/2 * 0.003969           = 0.000992
+
+       Tire STL cylinder axis: Z (upright in STL space)
+       Wheel spin axis in URDF: Y (ROS REP-103)
+       Fix: rotate -90deg around X  rpy="-1.5708 0 0"
+
+       Tire visual origin (to center mesh at link origin):
+         STL center (m) = (0.063, 0.063, 0.031)
+         After Rx(-90): x'=x, y'=z, z'=-y  -> (0.063, 0.031, -0.063)
+         visual origin xyz = "-0.063 -0.031  0.063"
+
+       Rim visual origin:
+         STL center (m) = (0.030, 0.030, 0.025)
+         After Rx(-90):  -> (0.030, 0.025, -0.030)
+         visual origin xyz = "-0.030 -0.025  0.030"
+
+       Collision: simple cylinder, rpy="1.5708 0 0" aligns axis to Y
+  ═══════════════════════════════════════════════════ -->
+
+  <!-- ──────────── FRONT LEFT WHEEL ──────────── -->
+  <link name="front_left_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.000646" ixy="0.0" ixz="0.0"
+                               iyy="0.000646" iyz="0.0"
+                                              izz="0.000992"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.063 -0.031 0.063" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/Tire_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="wheel_black"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.030 -0.025 0.030" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/tire_rim_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="rim_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.063" length="0.060"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="front_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_left_wheel"/>
+    <origin xyz="0.080 0.090 0.0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.01" friction="0.1"/>
+    <limit effort="10.0" velocity="10.0"/>
+  </joint>
+
+  <!-- ──────────── FRONT RIGHT WHEEL ──────────── -->
+  <link name="front_right_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.000646" ixy="0.0" ixz="0.0"
+                               iyy="0.000646" iyz="0.0"
+                                              izz="0.000992"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.063 -0.031 0.063" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/Tire_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="wheel_black"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.030 -0.025 0.030" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/tire_rim_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="rim_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.063" length="0.060"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="front_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_right_wheel"/>
+    <origin xyz="0.080 -0.090 0.0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.01" friction="0.1"/>
+    <limit effort="10.0" velocity="10.0"/>
+  </joint>
+
+  <!-- ──────────── REAR LEFT WHEEL ──────────── -->
+  <link name="rear_left_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.000646" ixy="0.0" ixz="0.0"
+                               iyy="0.000646" iyz="0.0"
+                                              izz="0.000992"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.063 -0.031 0.063" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/Tire_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="wheel_black"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.030 -0.025 0.030" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/tire_rim_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="rim_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.063" length="0.060"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rear_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="rear_left_wheel"/>
+    <origin xyz="-0.080 0.090 0.0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.01" friction="0.1"/>
+    <limit effort="10.0" velocity="10.0"/>
+  </joint>
+
+  <!-- ──────────── REAR RIGHT WHEEL ──────────── -->
+  <link name="rear_right_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.000646" ixy="0.0" ixz="0.0"
+                               iyy="0.000646" iyz="0.0"
+                                              izz="0.000992"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.063 -0.031 0.063" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/Tire_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="wheel_black"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.030 -0.025 0.030" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/tire_rim_r.dae"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="rim_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.063" length="0.060"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rear_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="rear_right_wheel"/>
+    <origin xyz="-0.080 -0.090 0.0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.01" friction="0.1"/>
+    <limit effort="10.0" velocity="10.0"/>
+  </joint>
+
+
+  <!-- ═══════════════════════════════════════════════════
+       SENSOR LINKS + JOINTS
+  ═══════════════════════════════════════════════════ -->
+
+  <!-- ──────────── LiDAR ────────────
+       Cylinder primitive: r=0.025 m, h=0.040 m
+       Mounted front-top of chassis
+         X = 0.070 m   (toward front)
+         Z = 0.017+0.020 = 0.037 m  (chassis top + half-height)
+       Inertia (cylinder m=0.2 kg, r=0.025, l=0.040):
+         Ixx=Iyy = 0.2/12*(3x0.025^2+0.040^2) = 0.0000579
+         Izz     = 0.2/2 * 0.025^2             = 0.0000625
+  ──────────────────────────────── -->
+  <link name="lidar_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.0000579" ixy="0.0" ixz="0.0"
+                                iyy="0.0000579" iyz="0.0"
+                                               izz="0.0000625"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.040"/>
+      </geometry>
+      <material name="lidar_blue"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.025" length="0.040"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.070 0.0 0.037" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── CAMERA ────────────
+       Box primitive: 40x40x20 mm
+       Nose-mounted, forward-facing
+         X = 0.110 m  (front face of chassis)
+         Z = 0.010 m  (slightly above axle height)
+       Inertia (box m=0.1 kg, 0.040x0.040x0.020):
+         Ixx = 0.1/12*(0.040^2+0.020^2) = 0.0000167
+         Iyy = 0.1/12*(0.040^2+0.020^2) = 0.0000167
+         Izz = 0.1/12*(0.040^2+0.040^2) = 0.0000267
+  ──────────────────────────────── -->
+  <link name="camera_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0000167" ixy="0.0" ixz="0.0"
+                                iyy="0.0000167" iyz="0.0"
+                                               izz="0.0000267"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.040 0.020"/>
+      </geometry>
+      <material name="camera_red"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.040 0.040 0.020"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.110 0.0 0.010" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Camera optical frame
+       ROS image convention: Z=forward, X=right, Y=down
+       Rotate -90deg around X, then -90deg around Z -->
+  <link name="camera_optical_frame"/>
+
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+
+  <!-- ──────────── IMU ────────────
+       Embedded at CoM (coincides with base_link origin)
+       Tiny box, mass already absorbed into base_link inertial
+  ──────────────────────────────── -->
+  <link name="imu_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0000010" ixy="0.0" ixz="0.0"
+                                iyy="0.0000010" iyz="0.0"
+                                               izz="0.0000010"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.020 0.020 0.010"/>
+      </geometry>
+      <material name="imu_green"/>
+    </visual>
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ═══════════════════════════════════════════════════
+       FANCY PARTS
+  ═══════════════════════════════════════════════════ -->
+
+  <!-- Extra materials -->
+  <material name="rollcage_gray">  <color rgba="0.40 0.40 0.40 1.0"/> </material>
+  <material name="bumper_dark">    <color rgba="0.18 0.18 0.18 1.0"/> </material>
+  <material name="payload_gray">   <color rgba="0.35 0.35 0.35 1.0"/> </material>
+  <material name="mount_gray">     <color rgba="0.45 0.45 0.45 1.0"/> </material>
+  <material name="antenna_dark">   <color rgba="0.15 0.15 0.15 1.0"/> </material>
+
+  <!-- ──────────── FRONT BUMPER GUARD ────────────
+       Horizontal bar across front face of chassis
+       Box: 0.012(X) × 0.200(Y) × 0.030(Z)
+       Position: just ahead of chassis front face
+  ──────────────────────────────────────────────── -->
+  <link name="front_bumper_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.15"/>
+      <inertia ixx="0.0000500" ixy="0.0" ixz="0.0"
+                                iyy="0.0000500" iyz="0.0"
+                                               izz="0.0000500"/>
+    </inertial>
+    <!-- Main horizontal bar -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.012 0.200 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <!-- Left bracket arm -->
+    <visual>
+      <origin xyz="-0.015 0.080 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.030 0.008 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <!-- Right bracket arm -->
+    <visual>
+      <origin xyz="-0.015 -0.080 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.030 0.008 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.012 0.200 0.025"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="front_bumper_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="front_bumper_link"/>
+    <origin xyz="0.116 0.0 -0.005" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── REAR BUMPER GUARD ────────────
+       Mirror of front bumper at rear of chassis
+  ──────────────────────────────────────────────── -->
+  <link name="rear_bumper_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.15"/>
+      <inertia ixx="0.0000500" ixy="0.0" ixz="0.0"
+                                iyy="0.0000500" iyz="0.0"
+                                               izz="0.0000500"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.012 0.200 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <!-- Left bracket arm -->
+    <visual>
+      <origin xyz="0.015 0.080 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.030 0.008 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <!-- Right bracket arm -->
+    <visual>
+      <origin xyz="0.015 -0.080 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.030 0.008 0.025"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.012 0.200 0.025"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rear_bumper_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rear_bumper_link"/>
+    <origin xyz="-0.116 0.0 -0.005" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── ROLLCAGE ────────────
+       4 vertical posts + 2 side rails + 2 cross bars
+       All as visuals on one link (no physics needed)
+       Posts at chassis corners, rails connecting them on top
+  ──────────────────────────────────────────────── -->
+  <link name="rollcage_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.30"/>
+      <inertia ixx="0.0001000" ixy="0.0" ixz="0.0"
+                                iyy="0.0001000" iyz="0.0"
+                                               izz="0.0001000"/>
+    </inertial>
+
+    <!-- Front-Left post -->
+    <visual>
+      <origin xyz=" 0.085  0.050 0.050" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.006" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Front-Right post -->
+    <visual>
+      <origin xyz=" 0.085 -0.050 0.050" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.006" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Rear-Left post -->
+    <visual>
+      <origin xyz="-0.085  0.050 0.050" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.006" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Rear-Right post -->
+    <visual>
+      <origin xyz="-0.085 -0.050 0.050" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.006" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+
+    <!-- Left side rail (front-left to rear-left) -->
+    <visual>
+      <origin xyz="0.0  0.050 0.100" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.005" length="0.170"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Right side rail (front-right to rear-right) -->
+    <visual>
+      <origin xyz="0.0 -0.050 0.100" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.005" length="0.170"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+
+    <!-- Front cross bar -->
+    <visual>
+      <origin xyz=" 0.085 0.0 0.100" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.005" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Rear cross bar -->
+    <visual>
+      <origin xyz="-0.085 0.0 0.100" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.005" length="0.100"/></geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+  </link>
+
+  <joint name="rollcage_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rollcage_link"/>
+    <origin xyz="0.0 0.0 0.017" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── PAYLOAD BAY ────────────
+       Cargo box mounted center-rear on chassis top
+       Box: 0.100(X) × 0.090(Y) × 0.035(Z)
+  ──────────────────────────────────────────────── -->
+  <link name="payload_bay_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.20"/>
+      <inertia ixx="0.0000500" ixy="0.0" ixz="0.0"
+                                iyy="0.0000500" iyz="0.0"
+                                               izz="0.0000500"/>
+    </inertial>
+    <!-- Main box body -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.100 0.090 0.035"/>
+      </geometry>
+      <material name="payload_gray"/>
+    </visual>
+    <!-- Lid line detail (thin flat box on top) -->
+    <visual>
+      <origin xyz="0 0 0.019" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.098 0.088 0.003"/>
+      </geometry>
+      <material name="rollcage_gray"/>
+    </visual>
+    <!-- Handle bar on lid -->
+    <visual>
+      <origin xyz="0 0 0.026" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.004" length="0.040"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.100 0.090 0.035"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="payload_bay_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="payload_bay_link"/>
+    <!-- Centered in Y, rear half of chassis, sitting on top -->
+    <origin xyz="-0.040 0.0 0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── LIDAR SENSOR MOUNT ────────────
+       Bracket platform under LiDAR
+       Box base + 2 side support tabs
+  ──────────────────────────────────────────────── -->
+  <link name="lidar_mount_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0000050" ixy="0.0" ixz="0.0"
+                                iyy="0.0000050" iyz="0.0"
+                                               izz="0.0000050"/>
+    </inertial>
+    <!-- Mounting plate -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.060 0.060 0.008"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+    <!-- Left support tab -->
+    <visual>
+      <origin xyz="0 0.034 -0.008" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.050 0.006 0.016"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+    <!-- Right support tab -->
+    <visual>
+      <origin xyz="0 -0.034 -0.008" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.050 0.006 0.016"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+  </link>
+
+  <joint name="lidar_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_mount_link"/>
+    <!-- Sits just below lidar_link -->
+    <origin xyz="0.070 0.0 0.021" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── CAMERA GIMBAL MOUNT ────────────
+       2-axis gimbal bracket: base plate + tilt arm + camera holder
+  ──────────────────────────────────────────────── -->
+  <link name="camera_gimbal_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0000050" ixy="0.0" ixz="0.0"
+                                iyy="0.0000050" iyz="0.0"
+                                               izz="0.0000050"/>
+    </inertial>
+    <!-- Base plate -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.030 0.045 0.006"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+    <!-- Left tilt arm -->
+    <visual>
+      <origin xyz="0.010 0.022 0.014" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.006 0.006 0.022"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+    <!-- Right tilt arm -->
+    <visual>
+      <origin xyz="0.010 -0.022 0.014" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.006 0.006 0.022"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+    <!-- Horizontal pivot rod -->
+    <visual>
+      <origin xyz="0.010 0 0.025" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.003" length="0.044"/>
+      </geometry>
+      <material name="bumper_dark"/>
+    </visual>
+  </link>
+
+  <joint name="camera_gimbal_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_gimbal_link"/>
+    <origin xyz="0.095 0.0 0.014" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ──────────── ANTENNA ────────────
+       Thin rod with small ball tip, mounted rear-left of chassis
+  ──────────────────────────────────────────────── -->
+  <link name="antenna_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.02"/>
+      <inertia ixx="0.0000010" ixy="0.0" ixz="0.0"
+                                iyy="0.0000010" iyz="0.0"
+                                               izz="0.0000010"/>
+    </inertial>
+    <!-- Antenna rod -->
+    <visual>
+      <origin xyz="0 0 0.055" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.004" length="0.110"/>
+      </geometry>
+      <material name="antenna_dark"/>
+    </visual>
+    <!-- Ball tip -->
+    <visual>
+      <origin xyz="0 0 0.115" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.007"/>
+      </geometry>
+      <material name="antenna_dark"/>
+    </visual>
+    <!-- Base mount collar -->
+    <visual>
+      <origin xyz="0 0 0.005" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.008" length="0.010"/>
+      </geometry>
+      <material name="mount_gray"/>
+    </visual>
+  </link>
+
+  <joint name="antenna_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="antenna_link"/>
+    <!-- Rear-left corner, on top of chassis -->
+    <origin xyz="-0.085 0.040 0.017" rpy="0 0 0"/>
+  </joint>
+
+</robot>

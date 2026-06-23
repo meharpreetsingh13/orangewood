@@ -1,0 +1,113 @@
+### slam_toolbox_params.yaml
+### ════════════════════════════════════════════════════════
+### Tuned for: 4WD scouting rover in Gazebo Fortress
+###
+### Sensor facts (from rover_gazebo_fortress.xacro):
+###   LiDAR : gpu_lidar on lidar_link
+###           360 samples, range 0.15–12.0 m, 10 Hz
+###           topic → /scan (bridged via ros_gz_bridge)
+###   Odom  : front diff_drive plugin, 50 Hz
+###           topic → /odom (bridged via ros_gz_bridge)
+###   TF    : diff_drive publishes odom→base_link
+###           topic → /tf  (bridged via ros_gz_bridge)
+###
+### Frame chain expected by slam_toolbox:
+###   map ← (slam_toolbox) ← odom ← (diff_drive TF) ← base_link
+###                                          ↑
+###                               lidar_joint is fixed:
+###                               base_link→lidar_link (from URDF)
+###                               RSP publishes this TF automatically
+### ════════════════════════════════════════════════════════
+
+slam_toolbox:
+  ros__parameters:
+
+    # ── Solver ─────────────────────────────────────────────
+    solver_plugin:              solver_plugins::CeresSolver
+    ceres_linear_solver:        SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner:       SCHUR_JACOBI
+    ceres_trust_strategy:       LEVENBERG_MARQUARDT
+    ceres_dogleg_type:          TRADITIONAL_DOGLEG
+    ceres_loss_function:        None
+
+    # ── Frames ─────────────────────────────────────────────
+    # Must match diff_drive plugin frame_id / child_frame_id
+    odom_frame:   odom
+    map_frame:    map
+    base_frame:   base_link
+
+    # Must match ros_gz_bridge LaserScan topic
+    scan_topic:   /scan
+
+    mode:         mapping
+
+    # ── Simulation time ────────────────────────────────────
+    # use_sim_time is passed as a node parameter in slam.launch.py
+    # so it does NOT need to be set here — leave it to the launcher.
+
+    # ── Logging ────────────────────────────────────────────
+    debug_logging:    false
+    throttle_scans:   1       # process every scan (LiDAR is 10 Hz — fine)
+
+    # ── TF publish rate ────────────────────────────────────
+    # Publish map→odom TF at 50 Hz to stay in sync with odom
+    transform_publish_period:   0.02
+
+    # ── Map update ─────────────────────────────────────────
+    map_update_interval:   5.0   # seconds between full costmap rebuild
+    resolution:            0.05  # 5 cm/cell — good for 12 m LiDAR range
+
+    # ── LiDAR range limits ─────────────────────────────────
+    # Match gpu_lidar range in xacro: min=0.15, max=12.0
+    minimum_laser_range:  0.15
+    maximum_laser_range:  12.0   # also used as max_laser_range below
+    max_laser_range:      12.0
+
+    # ── Scan acceptance thresholds ─────────────────────────
+    # Rover wheel_radius=0.063, wheelbase=0.160:
+    #   minimum_travel_distance: ~1 wheel rotation (2π×0.063 ≈ 0.40 m)
+    #   but 0.15 m gives denser mapping for a small rover
+    minimum_travel_distance:   0.15   # metres
+    minimum_travel_heading:    0.10   # ~5.7° in radians
+
+    # ── Scan buffer ────────────────────────────────────────
+    scan_buffer_size:                       10
+    scan_buffer_maximum_scan_distance:      10.0
+
+    # ── Loop closure ───────────────────────────────────────
+    link_match_minimum_response_fine:       0.10
+    link_scan_maximum_distance:             1.5
+    loop_search_maximum_distance:           3.0
+    do_loop_closing:                        true
+    loop_match_minimum_chain_size:          10
+    loop_match_maximum_variance_coarse:     3.0
+    loop_match_minimum_response_coarse:     0.35
+    loop_match_minimum_response_fine:       0.45
+
+    # ── Correlation (scan matcher) ─────────────────────────
+    correlation_search_space_dimension:         0.5
+    correlation_search_space_resolution:        0.01
+    correlation_search_space_smear_deviation:   0.1
+
+    # ── Loop closure search space ──────────────────────────
+    loop_search_space_dimension:        8.0
+    loop_search_space_resolution:       0.05
+    loop_search_space_smear_deviation:  0.03
+
+    # ── Penalty weights ────────────────────────────────────
+    distance_variance_penalty:    0.5
+    angle_variance_penalty:       1.0
+
+    fine_search_angle_offset:     0.00349   # 0.2°
+    coarse_search_angle_offset:   0.34906   # 20°
+    coarse_angle_resolution:      0.03491   # 2°
+
+    minimum_angle_penalty:        0.9
+    minimum_distance_penalty:     0.5
+    use_response_expansion:       true
+
+    # ── Map serialisation ──────────────────────────────────
+    # Press 's' in teleop to trigger /slam_toolbox/save_map service.
+    # Files written to cwd at launch time: rover_map.pgm + rover_map.yaml
+    map_file_name:       ""
+    map_start_at_dock:   false
