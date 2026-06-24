@@ -76,11 +76,3 @@ ros2 run nav2_map_server map_saver_cli -f ~/rover_map
 
 ---
 
-## Known Issues
-
-| Issue | Fix |
-|-------|-----|
-| `Ogre::UnimplementedException` | Change `ogre2` to `ogre` in world SDF |
-| Display error on WSL2 | Run `export DISPLAY=:0` |
-| `Zone.Identifier` in meshes | `rm -f meshes/*Zone.Identifier*` |
-| `odom.twist` always zero | Known Fortress bridge bug; PID runs passthrough |
