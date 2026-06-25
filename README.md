@@ -1,5 +1,5 @@
 # 4WD Skid-Steer Scouting Rover
-ROS2 Humble | Gazebo Fortress | Python 3.10 | WSL2 + WSLg
+ROS2 Humble | Gazebo Fortress | Python 3.10 | WSL2 
 
 ---
 
