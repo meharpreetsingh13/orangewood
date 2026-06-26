@@ -5,7 +5,7 @@ ROS2 Humble | Gazebo Fortress | Python 3.10 | WSL2
 
 ## Problem Statement
 
-Collapsed buildings, tight spaces, and shaky ground make post-earthquake urban surroundings too hazardous for people to enter right away. Prior to deployment, rescue crews must be familiar with the surroundings.
+Post-earthquake urban environments are too dangerous for humans to enter immediately due to collapsed buildings, confined areas, and unstable terrain. Rescue workers need to be familiar with the area before being sent.
 
 ## Solution
 
