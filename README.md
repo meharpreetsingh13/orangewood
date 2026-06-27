@@ -9,8 +9,7 @@ Post-earthquake urban environments are too dangerous for humans to enter immedia
 
 ## Solution
 
-Using SLAM, a simulated 4WD skid-steer rover can autonomously negotiate catastrophe terrain and create a real-time 2D occupancy map, allowing rescue crews to evaluate the environment from a distance before to physical entry.
-
+Using SLAM, a simulated 4WD skid-steer rover can autonomously navigate disaster terrain and generate a real-time 2D occupancy map, allowing rescue personnel to assess the area from a distance before physically entering.
 ---
 
 ## Stack
